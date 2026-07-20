@@ -24,11 +24,11 @@ case "$DEBIAN_VER" in
         ;;
     12) 
         DEBIAN_NAME="Debian 12 (Bookworm)"
-        ZFS_VER="2.3.5"
+        ZFS_VER="2.4.3"
         ;;
     13|trixie) 
         DEBIAN_NAME="Debian 13 (Trixie)"
-        ZFS_VER="2.3.5"
+        ZFS_VER="2.4.3"
         ;;
     *)
         echo "错误: 不支持的 Debian 版本: $DEBIAN_VER"
