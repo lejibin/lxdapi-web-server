@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	"crypto/tls"
+	"crypto/x509"
+	
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,6 +24,25 @@ func NewAPIHandler(plugin *NginxPlugin) *APIHandler {
 	return &APIHandler{
 		plugin: plugin,
 	}
+}
+
+// 校验证书格式是否正确、私钥和证书是否配对（支持自签名）
+func validateSSL(certStr, keyStr string) error {
+	// 1. 配对与语法校验（此函数不要求CA信任，自签名证书可完美通过）
+	tlsCert, err := tls.X509KeyPair(certBytes, keyBytes)
+	if err != nil {
+		return fmt.Errorf("解析失败或不匹配: %w (请检查证书和私钥是否是一对，文本是否完整)", err)
+	}
+	// 2. 基础结构解析：确保至少能读出证书的元数据
+	if len(tlsCert.Certificate) == 0 {
+		return fmt.Errorf("未在输入中找到任何有效的证书数据块")
+	}
+	_, err = x509.ParseCertificate(tlsCert.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("证书数据虽然配对，但内容已损坏无法解析: %w", err)
+	}
+
+	return nil
 }
 
 func validateDomain(domain string) error {
@@ -39,7 +60,7 @@ func validateDomain(domain string) error {
 		return fmt.Errorf("域名不能包含空格")
 	}
 
-	domainRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
+	domainRegex := regexp.MustCompile(`\A(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\z`)
 	if !domainRegex.MatchString(domain) {
 		return fmt.Errorf("域名格式不正确，只能包含字母、数字、点和中划线，且不能以中划线开头或结尾")
 	}
@@ -258,7 +279,12 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 		response.Error(c, 400, "容器名称、域名和协议不能为空")
 		return
 	}
-
+	if req.SSLCert != "" || req.SSLKey != "" {
+		if err := validateSSL(req.SSLCert, req.SSLKey); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
 	if err := validateDomain(req.Domain); err != nil {
 		response.Error(c, 400, err.Error())
 		return
@@ -344,7 +370,14 @@ func (h *APIHandler) UpdateProxy(c *gin.Context) {
 		response.Error(c, 400, "参数错误")
 		return
 	}
-
+	
+	if req.SSLCert != "" || req.SSLKey != "" {
+		if err := validateSSL(req.SSLCert, req.SSLKey); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
+	
 	if err := validateDomain(req.Domain); err != nil {
 		response.Error(c, 400, err.Error())
 		return
@@ -599,7 +632,12 @@ func (h *APIHandler) createProxyInternal(c *gin.Context, req models.ReverseProxy
 		response.Error(c, 400, "域名和协议不能为空")
 		return
 	}
-
+	if req.SSLCert != "" || req.SSLKey != "" {
+		if err := validateSSL(req.SSLCert, req.SSLKey); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
 	if err := validateDomain(req.Domain); err != nil {
 		response.Error(c, 400, err.Error())
 		return
